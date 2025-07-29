@@ -106,6 +106,14 @@ def build_model():
     return search
 
 
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+
+    return model
+
+
 def train_and_predict():
     df = load_data()
     df["Winner"] = (df["Position"] == 1).astype(int)
@@ -136,6 +144,10 @@ def train_and_predict():
 
     X_test = test_df[features]
     probs = best_model.predict_proba(X_test)[:, 1]
+
+
+    probs = model.predict_proba(X_test)[:, 1]
+
     test_df = test_df.copy()
     test_df['WinProbability'] = probs
     pred = test_df.sort_values('WinProbability', ascending=False).iloc[0]
@@ -186,6 +198,7 @@ def train_and_predict():
         f"{pred_next['WinProbability']:.3f}",
     )
 
+
     # compute accuracy on full dataset via train/test split
     X = df[features]
     y = df["Winner"]
@@ -194,6 +207,16 @@ def train_and_predict():
     )
     best_model.fit(X_tr, y_tr)
     acc = best_model.score(X_te, y_te)
+
+
+    y = df['Winner']
+    X_tr, X_te, y_tr, y_te = train_test_split(
+        X, y, test_size=0.2, stratify=y, random_state=42
+    )
+    model = build_model()
+    model.fit(X_tr, y_tr)
+
+
     print("Overall accuracy", f"{acc:.3f}")
 
 

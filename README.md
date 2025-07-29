@@ -34,6 +34,7 @@ The script also prints the overall accuracy of the model using a random train
 /test split. It then estimates the winner of the next scheduled race using the
 current driver and team standings.
 
+
 ## Data Source
 
 Race and timing data is retrieved via `fastf1`, which accesses the official F1
