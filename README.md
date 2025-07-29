@@ -23,16 +23,16 @@ be downloaded automatically to build the training dataset.
 
 ## Usage
 
-1. Run `predict_winner.py` to fetch race results, train a model and display the
-   predicted winner for the most recent race as well as the upcoming round.
+1. Run `predict_winner.py` to fetch race results, train a model and output the
+   driver most likely to win the next scheduled race (P1).
 
 ```bash
 python predict_winner.py
 ```
 
-The script also prints the overall accuracy of the model using a random train
-/test split. It then estimates the winner of the next scheduled race using the
-current driver and team standings.
+The script also prints the overall accuracy of the model using a random
+train/test split before predicting the winner of the next race based on the
+latest standings.
 
 
 ## Data Source

@@ -106,23 +106,12 @@ def build_model():
     return search
 
 
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-
-    return model
-
-
 def train_and_predict():
     df = load_data()
     df["Winner"] = (df["Position"] == 1).astype(int)
 
     last_year = df["Year"].max()
     last_round = df[df["Year"] == last_year]["Round"].max()
-
-    train_df = df[~((df["Year"] == last_year) & (df["Round"] == last_round))]
-    test_df = df[(df["Year"] == last_year) & (df["Round"] == last_round)]
 
     features = [
         "Abbreviation",
@@ -132,6 +121,15 @@ def train_and_predict():
         "DriverPointsBefore",
         "TeamPointsBefore",
     ]
+
+    X = df[features]
+    y = df["Winner"]
+
+    search = build_model()
+    search.fit(X, y)
+    print("Best parameters:", search.best_params_)
+
+    model = search.best_estimator_
 
     X_train = train_df[features]
     y_train = train_df["Winner"]
@@ -186,6 +184,15 @@ def train_and_predict():
     lineup["GridPosition"] = 0
 
     X_next = lineup[features]
+    next_probs = model.predict_proba(X_next)[:, 1]
+    lineup["WinProbability"] = next_probs
+    pred_next = lineup.sort_values("WinProbability", ascending=False).iloc[0]
+    print(
+        "Predicted P1 for the next race (round",
+        next_round,
+        "in",
+        next_year,
+        ") is",
     next_probs = best_model.predict_proba(X_next)[:, 1]
     lineup["WinProbability"] = next_probs
     pred_next = lineup.sort_values("WinProbability", ascending=False).iloc[0]
@@ -197,6 +204,17 @@ def train_and_predict():
         "with probability",
         f"{pred_next['WinProbability']:.3f}",
     )
+
+    # compute accuracy on full dataset via train/test split
+    X_tr, X_te, y_tr, y_te = train_test_split(
+        X, y, test_size=0.2, stratify=y, random_state=42
+    )
+    model.fit(X_tr, y_tr)
+    acc = model.score(X_te, y_te)
+    print("Overall accuracy", f"{acc:.3f}")
+
+    # refit on all data before predicting
+    model.fit(X, y)
 
 
     # compute accuracy on full dataset via train/test split
