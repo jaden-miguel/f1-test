@@ -2,11 +2,11 @@ import fastf1
 import pandas as pd
 from pathlib import Path
 
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, RandomizedSearchCV
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.linear_model import LogisticRegressionCV
+from sklearn.ensemble import RandomForestClassifier
 
 CACHE_DIR = Path("cache")
 CACHE_DIR.mkdir(exist_ok=True)
@@ -14,7 +14,8 @@ fastf1.Cache.enable_cache(str(CACHE_DIR))
 
 
 def load_data(years=(2022, 2023, 2024)):
-    """Load race results for multiple seasons using FastF1.
+    """Load race results for multiple seasons using FastF1 and compute
+    cumulative points so the model can learn from season progress.
 
     If a cached CSV file exists it will be reused to avoid excessive
     network access.
@@ -49,16 +50,28 @@ def load_data(years=(2022, 2023, 2024)):
             records.append(res)
 
     df = pd.concat(records, ignore_index=True)
+    df.sort_values(["Year", "Round"], inplace=True)
+    df["DriverPointsBefore"] = (
+        df.groupby("DriverNumber")["Points"].cumsum() - df["Points"]
+    )
+    df["TeamPointsBefore"] = (
+        df.groupby("TeamName")["Points"].cumsum() - df["Points"]
+    )
     df = df.dropna(subset=["GridPosition", "DriverNumber", "Position"])
     df.to_csv(csv_path, index=False)
     return df
 
 
 def build_model():
-    """Return a logistic regression model with basic preprocessing."""
+    """Return a randomized-search random forest pipeline."""
 
     categorical = ["Abbreviation", "TeamName"]
-    numeric = ["GridPosition", "DriverNumber"]
+    numeric = [
+        "GridPosition",
+        "DriverNumber",
+        "DriverPointsBefore",
+        "TeamPointsBefore",
+    ]
 
     pre = ColumnTransformer(
         [
@@ -67,22 +80,30 @@ def build_model():
         ]
     )
 
-    model = Pipeline(
+    pipe = Pipeline(
         [
             ("preprocess", pre),
-            (
-                "classifier",
-                LogisticRegressionCV(
-                    Cs=10,
-                    cv=5,
-                    max_iter=5000,
-                    scoring="accuracy",
-                    n_jobs=None,
-                ),
-            ),
+            ("classifier", RandomForestClassifier(random_state=42)),
         ]
     )
-    return model
+
+    param_dist = {
+        "classifier__n_estimators": [100, 200, 300, 500],
+        "classifier__max_depth": [None, 5, 10, 20],
+        "classifier__min_samples_split": [2, 5, 10],
+        "classifier__min_samples_leaf": [1, 2, 4],
+    }
+
+    search = RandomizedSearchCV(
+        pipe,
+        param_distributions=param_dist,
+        n_iter=10,
+        cv=5,
+        n_jobs=-1,
+        scoring="accuracy",
+        random_state=42,
+    )
+    return search
 
 
 def train_and_predict():
@@ -95,24 +116,26 @@ def train_and_predict():
     train_df = df[~((df["Year"] == last_year) & (df["Round"] == last_round))]
     test_df = df[(df["Year"] == last_year) & (df["Round"] == last_round)]
 
-    X_train = train_df[[
+    features = [
         "Abbreviation",
         "TeamName",
         "GridPosition",
         "DriverNumber",
-    ]]
-    y_train = train_df['Winner']
+        "DriverPointsBefore",
+        "TeamPointsBefore",
+    ]
 
-    model = build_model()
-    model.fit(X_train, y_train)
+    X_train = train_df[features]
+    y_train = train_df["Winner"]
 
-    X_test = test_df[[
-        "Abbreviation",
-        "TeamName",
-        "GridPosition",
-        "DriverNumber",
-    ]]
-    probs = model.predict_proba(X_test)[:, 1]
+    search = build_model()
+    search.fit(X_train, y_train)
+    print("Best parameters:", search.best_params_)
+
+    best_model = search.best_estimator_
+
+    X_test = test_df[features]
+    probs = best_model.predict_proba(X_test)[:, 1]
     test_df = test_df.copy()
     test_df['WinProbability'] = probs
     pred = test_df.sort_values('WinProbability', ascending=False).iloc[0]
@@ -122,14 +145,13 @@ def train_and_predict():
     print("Actual winner was", actual_winner['Abbreviation'])
 
     # compute accuracy on full dataset via train/test split
-    X = df[["Abbreviation", "TeamName", "GridPosition", "DriverNumber"]]
-    y = df['Winner']
+    X = df[features]
+    y = df["Winner"]
     X_tr, X_te, y_tr, y_te = train_test_split(
         X, y, test_size=0.2, stratify=y, random_state=42
     )
-    model = build_model()
-    model.fit(X_tr, y_tr)
-    acc = model.score(X_te, y_te)
+    best_model.fit(X_tr, y_tr)
+    acc = best_model.score(X_te, y_te)
     print("Overall accuracy", f"{acc:.3f}")
 
 

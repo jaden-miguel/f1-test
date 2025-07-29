@@ -1,10 +1,11 @@
 # F1 Winner Predictor
 
 This project downloads Formula 1 race results with the
-[FastF1](https://github.com/theOehrly/Fast-F1) library and trains a logistic
-regression model to estimate each driver's chance of winning the next race. The
-model is trained on data from the last few seasons and uses cross-validation to
-improve accuracy.
+[FastF1](https://github.com/theOehrly/Fast-F1) library and trains a random
+forest model to estimate each driver's chance of winning the next race. The
+training data includes cumulative driver and team points before each round.
+`RandomizedSearchCV` selects the best hyperparameters for the forest so the
+predictions are as accurate as possible.
 
 ## Setup
 
