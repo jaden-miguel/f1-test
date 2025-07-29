@@ -131,6 +131,29 @@ def train_and_predict():
 
     model = search.best_estimator_
 
+    X_train = train_df[features]
+    y_train = train_df["Winner"]
+
+    search = build_model()
+    search.fit(X_train, y_train)
+    print("Best parameters:", search.best_params_)
+
+    best_model = search.best_estimator_
+
+    X_test = test_df[features]
+    probs = best_model.predict_proba(X_test)[:, 1]
+
+
+    probs = model.predict_proba(X_test)[:, 1]
+
+    test_df = test_df.copy()
+    test_df['WinProbability'] = probs
+    pred = test_df.sort_values('WinProbability', ascending=False).iloc[0]
+    print("Predicted winner for round", last_round, "is", pred['Abbreviation'],
+          "with probability", f"{pred['WinProbability']:.3f}")
+    actual_winner = test_df[test_df['Winner'] == 1].iloc[0]
+    print("Actual winner was", actual_winner['Abbreviation'])
+
     # predict winner for the next scheduled race
     schedule = fastf1.get_event_schedule(last_year, include_testing=False)
     max_round = schedule["RoundNumber"].max()
@@ -170,6 +193,13 @@ def train_and_predict():
         "in",
         next_year,
         ") is",
+    next_probs = best_model.predict_proba(X_next)[:, 1]
+    lineup["WinProbability"] = next_probs
+    pred_next = lineup.sort_values("WinProbability", ascending=False).iloc[0]
+    print(
+        "Predicted winner for next round",
+        next_round,
+        "is",
         pred_next["Abbreviation"],
         "with probability",
         f"{pred_next['WinProbability']:.3f}",
@@ -185,6 +215,27 @@ def train_and_predict():
 
     # refit on all data before predicting
     model.fit(X, y)
+
+
+    # compute accuracy on full dataset via train/test split
+    X = df[features]
+    y = df["Winner"]
+    X_tr, X_te, y_tr, y_te = train_test_split(
+        X, y, test_size=0.2, stratify=y, random_state=42
+    )
+    best_model.fit(X_tr, y_tr)
+    acc = best_model.score(X_te, y_te)
+
+
+    y = df['Winner']
+    X_tr, X_te, y_tr, y_te = train_test_split(
+        X, y, test_size=0.2, stratify=y, random_state=42
+    )
+    model = build_model()
+    model.fit(X_tr, y_tr)
+
+
+    print("Overall accuracy", f"{acc:.3f}")
 
 
 if __name__ == '__main__':
