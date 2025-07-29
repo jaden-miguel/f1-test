@@ -63,7 +63,7 @@ def load_data(years=(2022, 2023, 2024)):
 
 
 def build_model():
-    """Return a pipeline with a tuned random forest classifier."""
+    """Return a randomized-search random forest pipeline."""
 
     categorical = ["Abbreviation", "TeamName"]
     numeric = [
@@ -80,14 +80,24 @@ def build_model():
         ]
     )
 
+
+    pipe = Pipeline(
+        [
+            ("preprocess", pre),
+            ("classifier", RandomForestClassifier(random_state=42)),
+        ]
+    )
+
+    param_dist = {
+        "classifier__n_estimators": [100, 200, 300, 500],
+        "classifier__max_depth": [None, 5, 10, 20],
+        "classifier__min_samples_split": [2, 5, 10],
+        "classifier__min_samples_leaf": [1, 2, 4],
+    }
+
     search = RandomizedSearchCV(
-        RandomForestClassifier(random_state=42),
-        param_distributions={
-            "n_estimators": [50, 100, 200],
-            "max_depth": [5, 10, None],
-            "min_samples_split": [2, 5, 10],
-            "min_samples_leaf": [1, 2, 4],
-        },
+        pipe,
+        param_distributions=param_dist,
         n_iter=10,
         cv=5,
         n_jobs=-1,
@@ -95,13 +105,15 @@ def build_model():
         random_state=42,
     )
 
-    pipe = Pipeline(
-        [
-            ("preprocess", pre),
-            ("classifier", search),
-        ]
-    )
-    return pipe
+    return search
+
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+
+    return model
 
 
 def train_and_predict():
@@ -110,6 +122,10 @@ def train_and_predict():
 
     last_year = df["Year"].max()
     last_round = df[df["Year"] == last_year]["Round"].max()
+
+
+    train_df = df[~((df["Year"] == last_year) & (df["Round"] == last_round))]
+    test_df = df[(df["Year"] == last_year) & (df["Round"] == last_round)]
 
     features = [
         "Abbreviation",
@@ -120,35 +136,29 @@ def train_and_predict():
         "TeamPointsBefore",
     ]
 
-    X = df[features]
-    y = df["Winner"]
 
-    pipe = build_model()
-    pipe.fit(X, y)
-    best_params = pipe.named_steps["classifier"].best_params_
-    print("Best parameters:", best_params)
+    X_train = train_df[features]
+    y_train = train_df["Winner"]
 
-    # rebuild model using the best parameters
-    model = Pipeline(
-        [
-            ("preprocess", pipe.named_steps["preprocess"]),
-            (
-                "classifier",
-                RandomForestClassifier(random_state=42, **best_params),
-            ),
-        ]
-    )
+    search = build_model()
+    search.fit(X_train, y_train)
+    print("Best parameters:", search.best_params_)
 
-    # compute accuracy on a train/test split
-    X_tr, X_te, y_tr, y_te = train_test_split(
-        X, y, test_size=0.2, stratify=y, random_state=42
-    )
-    model.fit(X_tr, y_tr)
-    acc = model.score(X_te, y_te)
-    print("Overall accuracy", f"{acc:.3f}")
+    best_model = search.best_estimator_
 
-    # refit on all data before predicting
-    model.fit(X, y)
+    X_test = test_df[features]
+    probs = best_model.predict_proba(X_test)[:, 1]
+
+
+    probs = model.predict_proba(X_test)[:, 1]
+
+    test_df = test_df.copy()
+    test_df['WinProbability'] = probs
+    pred = test_df.sort_values('WinProbability', ascending=False).iloc[0]
+    print("Predicted winner for round", last_round, "is", pred['Abbreviation'],
+          "with probability", f"{pred['WinProbability']:.3f}")
+    actual_winner = test_df[test_df['Winner'] == 1].iloc[0]
+    print("Actual winner was", actual_winner['Abbreviation'])
 
     # predict winner for the next scheduled race
     schedule = fastf1.get_event_schedule(last_year, include_testing=False)
@@ -180,19 +190,39 @@ def train_and_predict():
     lineup["GridPosition"] = 0
 
     X_next = lineup[features]
-    next_probs = model.predict_proba(X_next)[:, 1]
+
+    next_probs = best_model.predict_proba(X_next)[:, 1]
     lineup["WinProbability"] = next_probs
     pred_next = lineup.sort_values("WinProbability", ascending=False).iloc[0]
     print(
-        "Predicted P1 for the next race (round",
+        "Predicted winner for next round",
         next_round,
-        "in",
-        next_year,
-        ") is",
+        "is",
         pred_next["Abbreviation"],
         "with probability",
         f"{pred_next['WinProbability']:.3f}",
     )
+
+
+    # compute accuracy on full dataset via train/test split
+    X = df[features]
+    y = df["Winner"]
+    X_tr, X_te, y_tr, y_te = train_test_split(
+        X, y, test_size=0.2, stratify=y, random_state=42
+    )
+    best_model.fit(X_tr, y_tr)
+    acc = best_model.score(X_te, y_te)
+
+
+    y = df['Winner']
+    X_tr, X_te, y_tr, y_te = train_test_split(
+        X, y, test_size=0.2, stratify=y, random_state=42
+    )
+    model = build_model()
+    model.fit(X_tr, y_tr)
+
+
+    print("Overall accuracy", f"{acc:.3f}")
 
 
 if __name__ == '__main__':
