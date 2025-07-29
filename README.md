@@ -31,11 +31,9 @@ be downloaded automatically to build the training dataset.
 python predict_winner.py
 ```
 
-
 The script also prints the overall accuracy of the model using a random train
 /test split. It then estimates the winner of the next scheduled race using the
 current driver and team standings.
-
 
 ## Data Source
 
