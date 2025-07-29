@@ -7,7 +7,6 @@ training data includes cumulative driver and team points before each round.
 `RandomizedSearchCV` selects the best hyperparameters for the forest so the
 predictions are as accurate as possible.
 
-
 ## Setup
 
 Install the dependencies with pip:
@@ -25,14 +24,15 @@ be downloaded automatically to build the training dataset.
 ## Usage
 
 1. Run `predict_winner.py` to fetch race results, train a model and display the
-   predicted winner for the most recent round.
+   predicted winner for the most recent race as well as the upcoming round.
 
 ```bash
 python predict_winner.py
 ```
 
 The script also prints the overall accuracy of the model using a random train
-/test split.
+/test split. It then estimates the winner of the next scheduled race using the
+current driver and team standings.
 
 
 ## Data Source

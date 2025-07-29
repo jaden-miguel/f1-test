@@ -105,6 +105,7 @@ def build_model():
     )
     return search
 
+
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
@@ -144,7 +145,9 @@ def train_and_predict():
     X_test = test_df[features]
     probs = best_model.predict_proba(X_test)[:, 1]
 
+
     probs = model.predict_proba(X_test)[:, 1]
+
     test_df = test_df.copy()
     test_df['WinProbability'] = probs
     pred = test_df.sort_values('WinProbability', ascending=False).iloc[0]
@@ -152,6 +155,49 @@ def train_and_predict():
           "with probability", f"{pred['WinProbability']:.3f}")
     actual_winner = test_df[test_df['Winner'] == 1].iloc[0]
     print("Actual winner was", actual_winner['Abbreviation'])
+
+    # predict winner for the next scheduled race
+    schedule = fastf1.get_event_schedule(last_year, include_testing=False)
+    max_round = schedule["RoundNumber"].max()
+    if last_round < max_round:
+        next_year = last_year
+        next_round = last_round + 1
+    else:
+        next_year = last_year + 1
+        next_schedule = fastf1.get_event_schedule(
+            next_year, include_testing=False
+        )
+        next_round = int(next_schedule["RoundNumber"].min())
+
+    lineup = (
+        df[df["Year"] == last_year]
+        .groupby(["DriverNumber", "Abbreviation", "TeamName"])
+        .tail(1)
+        [["DriverNumber", "Abbreviation", "TeamName"]]
+    )
+
+    driver_totals = (
+        df.groupby("DriverNumber")["Points"].sum()
+    )
+    team_totals = df.groupby("TeamName")["Points"].sum()
+
+    lineup["DriverPointsBefore"] = lineup["DriverNumber"].map(driver_totals)
+    lineup["TeamPointsBefore"] = lineup["TeamName"].map(team_totals)
+    lineup["GridPosition"] = 0
+
+    X_next = lineup[features]
+    next_probs = best_model.predict_proba(X_next)[:, 1]
+    lineup["WinProbability"] = next_probs
+    pred_next = lineup.sort_values("WinProbability", ascending=False).iloc[0]
+    print(
+        "Predicted winner for next round",
+        next_round,
+        "is",
+        pred_next["Abbreviation"],
+        "with probability",
+        f"{pred_next['WinProbability']:.3f}",
+    )
+
 
     # compute accuracy on full dataset via train/test split
     X = df[features]
@@ -162,12 +208,14 @@ def train_and_predict():
     best_model.fit(X_tr, y_tr)
     acc = best_model.score(X_te, y_te)
 
+
     y = df['Winner']
     X_tr, X_te, y_tr, y_te = train_test_split(
         X, y, test_size=0.2, stratify=y, random_state=42
     )
     model = build_model()
     model.fit(X_tr, y_tr)
+
 
     print("Overall accuracy", f"{acc:.3f}")
 
