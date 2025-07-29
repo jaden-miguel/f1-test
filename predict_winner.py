@@ -1,5 +1,109 @@
 import fastf1
 import pandas as pd
+from pathlib import Path
+
+from sklearn.model_selection import train_test_split, RandomizedSearchCV
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.ensemble import RandomForestClassifier
+
+CACHE_DIR = Path("cache")
+CACHE_DIR.mkdir(exist_ok=True)
+fastf1.Cache.enable_cache(str(CACHE_DIR))
+
+
+def load_data(years=(2022, 2023, 2024)):
+    """Load race results for multiple seasons using FastF1 and compute
+    cumulative points so the model can learn from season progress.
+
+    If a cached CSV file exists it will be reused to avoid excessive
+    network access.
+    """
+    csv_path = Path("data.csv")
+    if csv_path.exists():
+        return pd.read_csv(csv_path)
+
+    records = []
+    for year in years:
+        schedule = fastf1.get_event_schedule(year, include_testing=False)
+        for rnd in schedule["RoundNumber"]:
+            try:
+                session = fastf1.get_session(year, int(rnd), "R")
+                session.load(laps=False, telemetry=False)
+            except Exception as exc:  # pragma: no cover - network errors
+                print(f"Could not load {year} round {rnd}: {exc}")
+                continue
+
+            res = session.results[
+                [
+                    "DriverNumber",
+                    "Abbreviation",
+                    "TeamName",
+                    "GridPosition",
+                    "Position",
+                    "Points",
+                ]
+            ].copy()
+            res["Year"] = year
+            res["Round"] = int(rnd)
+            records.append(res)
+
+    df = pd.concat(records, ignore_index=True)
+    df.sort_values(["Year", "Round"], inplace=True)
+    df["DriverPointsBefore"] = (
+        df.groupby("DriverNumber")["Points"].cumsum() - df["Points"]
+    )
+    df["TeamPointsBefore"] = (
+        df.groupby("TeamName")["Points"].cumsum() - df["Points"]
+    )
+    df = df.dropna(subset=["GridPosition", "DriverNumber", "Position"])
+    df.to_csv(csv_path, index=False)
+    return df
+
+
+def build_model():
+    """Return a randomized-search random forest pipeline."""
+
+    categorical = ["Abbreviation", "TeamName"]
+    numeric = [
+        "GridPosition",
+        "DriverNumber",
+        "DriverPointsBefore",
+        "TeamPointsBefore",
+    ]
+
+    pre = ColumnTransformer(
+        [
+            ("cat", OneHotEncoder(handle_unknown="ignore"), categorical),
+            ("num", StandardScaler(), numeric),
+        ]
+    )
+
+    pipe = Pipeline(
+        [
+            ("preprocess", pre),
+            ("classifier", RandomForestClassifier(random_state=42)),
+        ]
+    )
+
+    param_dist = {
+        "classifier__n_estimators": [100, 200, 300, 500],
+        "classifier__max_depth": [None, 5, 10, 20],
+        "classifier__min_samples_split": [2, 5, 10],
+        "classifier__min_samples_leaf": [1, 2, 4],
+    }
+
+    search = RandomizedSearchCV(
+        pipe,
+        param_distributions=param_dist,
+        n_iter=10,
+        cv=5,
+        n_jobs=-1,
+        scoring="accuracy",
+        random_state=42,
+    )
+    return search
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
@@ -11,6 +115,34 @@ from sklearn.pipeline import Pipeline
 
 def train_and_predict():
     df = load_data()
+    df["Winner"] = (df["Position"] == 1).astype(int)
+
+    last_year = df["Year"].max()
+    last_round = df[df["Year"] == last_year]["Round"].max()
+
+    train_df = df[~((df["Year"] == last_year) & (df["Round"] == last_round))]
+    test_df = df[(df["Year"] == last_year) & (df["Round"] == last_round)]
+
+    features = [
+        "Abbreviation",
+        "TeamName",
+        "GridPosition",
+        "DriverNumber",
+        "DriverPointsBefore",
+        "TeamPointsBefore",
+    ]
+
+    X_train = train_df[features]
+    y_train = train_df["Winner"]
+
+    search = build_model()
+    search.fit(X_train, y_train)
+    print("Best parameters:", search.best_params_)
+
+    best_model = search.best_estimator_
+
+    X_test = test_df[features]
+    probs = best_model.predict_proba(X_test)[:, 1]
 
     probs = model.predict_proba(X_test)[:, 1]
     test_df = test_df.copy()
@@ -22,6 +154,14 @@ def train_and_predict():
     print("Actual winner was", actual_winner['Abbreviation'])
 
     # compute accuracy on full dataset via train/test split
+    X = df[features]
+    y = df["Winner"]
+    X_tr, X_te, y_tr, y_te = train_test_split(
+        X, y, test_size=0.2, stratify=y, random_state=42
+    )
+    best_model.fit(X_tr, y_tr)
+    acc = best_model.score(X_te, y_te)
+
     y = df['Winner']
     X_tr, X_te, y_tr, y_te = train_test_split(
         X, y, test_size=0.2, stratify=y, random_state=42
