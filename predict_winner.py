@@ -93,23 +93,18 @@ def train_and_predict():
     train_df = df[~((df["Year"] == last_year) & (df["Round"] == last_round))]
     test_df = df[(df["Year"] == last_year) & (df["Round"] == last_round)]
 
-    X_train = train_df[[
+
         "Abbreviation",
         "TeamName",
         "GridPosition",
         "DriverNumber",
-    ]]
+
     y_train = train_df['Winner']
 
     model = build_model()
     model.fit(X_train, y_train)
 
-    X_test = test_df[[
-        "Abbreviation",
-        "TeamName",
-        "GridPosition",
-        "DriverNumber",
-    ]]
+
     probs = model.predict_proba(X_test)[:, 1]
     test_df = test_df.copy()
     test_df['WinProbability'] = probs
@@ -120,7 +115,6 @@ def train_and_predict():
     print("Actual winner was", actual_winner['Abbreviation'])
 
     # compute accuracy on full dataset via train/test split
-    X = df[["Abbreviation", "TeamName", "GridPosition", "DriverNumber"]]
     y = df['Winner']
     X_tr, X_te, y_tr, y_te = train_test_split(
         X, y, test_size=0.2, stratify=y, random_state=42
