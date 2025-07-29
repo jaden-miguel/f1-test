@@ -7,6 +7,7 @@ training data includes cumulative driver and team points before each round.
 `RandomizedSearchCV` selects the best hyperparameters for the forest so the
 predictions are as accurate as possible.
 
+
 ## Setup
 
 Install the dependencies with pip:
@@ -32,6 +33,7 @@ python predict_winner.py
 
 The script also prints the overall accuracy of the model using a random train
 /test split.
+
 
 ## Data Source
 
