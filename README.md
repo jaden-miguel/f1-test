@@ -1,9 +1,10 @@
 # F1 Winner Predictor
 
-This project downloads the latest Formula 1 race results using the
-[FastF1](https://github.com/theOehrly/Fast-F1) library and trains a simple
-logistic regression model to estimate the probability of each driver winning the
-next race.
+This project downloads Formula 1 race results with the
+[FastF1](https://github.com/theOehrly/Fast-F1) library and trains a logistic
+regression model to estimate each driver's chance of winning the next race. The
+model is trained on data from the last few seasons and uses cross-validation to
+improve accuracy.
 
 ## Setup
 
@@ -15,6 +16,9 @@ pip install -r requirements.txt
 
 The first run will download timing data from the official F1 API and cache it in
 `cache/`.
+
+If `data.csv` is not present, race results from the past three seasons will also
+be downloaded automatically to build the training dataset.
 
 ## Usage
 
