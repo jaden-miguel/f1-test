@@ -6,6 +6,7 @@ regression model to estimate each driver's chance of winning the next race. The
 model is trained on data from the last few seasons and uses cross-validation to
 improve accuracy.
 
+
 ## Setup
 
 Install the dependencies with pip:
@@ -29,8 +30,6 @@ be downloaded automatically to build the training dataset.
 python predict_winner.py
 ```
 
-The script also prints the overall accuracy of the model using a random train
-/test split.
 
 ## Data Source
 
