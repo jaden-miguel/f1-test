@@ -1,10 +1,5 @@
 # F1 Winner Predictor
 
-This project downloads Formula 1 race results with the
-[FastF1](https://github.com/theOehrly/Fast-F1) library and trains a
-cross-validated random forest model to estimate each driver's chance of winning
-the next race. The model learns from the last few seasons and includes
-cumulative driver and team points as features to boost accuracy.
 
 ## Setup
 
@@ -17,9 +12,6 @@ pip install -r requirements.txt
 The first run will download timing data from the official F1 API and cache it in
 `cache/`.
 
-If `data.csv` is not present, race results from the past three seasons will also
-be downloaded automatically to build the training dataset.
-
 ## Usage
 
 1. Run `predict_winner.py` to fetch race results, train a model and display the
@@ -29,10 +21,6 @@ be downloaded automatically to build the training dataset.
 python predict_winner.py
 ```
 
-The script also prints the overall accuracy of the model using a random
-train/test split after tuning the forest's hyperparameters with cross
-validation. After training, it displays the best parameters found so you can
-see which settings performed best.
 
 ## Data Source
 
