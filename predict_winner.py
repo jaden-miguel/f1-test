@@ -103,6 +103,7 @@ def build_model():
         scoring="accuracy",
         random_state=42,
     )
+
     return search
 
 
@@ -121,6 +122,7 @@ def train_and_predict():
     last_year = df["Year"].max()
     last_round = df[df["Year"] == last_year]["Round"].max()
 
+
     train_df = df[~((df["Year"] == last_year) & (df["Round"] == last_round))]
     test_df = df[(df["Year"] == last_year) & (df["Round"] == last_round)]
 
@@ -132,6 +134,7 @@ def train_and_predict():
         "DriverPointsBefore",
         "TeamPointsBefore",
     ]
+
 
     X_train = train_df[features]
     y_train = train_df["Winner"]
@@ -186,6 +189,7 @@ def train_and_predict():
     lineup["GridPosition"] = 0
 
     X_next = lineup[features]
+
     next_probs = best_model.predict_proba(X_next)[:, 1]
     lineup["WinProbability"] = next_probs
     pred_next = lineup.sort_values("WinProbability", ascending=False).iloc[0]
