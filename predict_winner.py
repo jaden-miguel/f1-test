@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split, RandomizedSearchCV
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
 
 CACHE_DIR = Path("cache")
 CACHE_DIR.mkdir(exist_ok=True)
@@ -63,7 +63,7 @@ def load_data(years=(2022, 2023, 2024)):
 
 
 def build_model():
-    """Return a pipeline with a tuned logistic regression classifier."""
+    """Return a pipeline with a tuned random forest classifier."""
 
     categorical = ["Abbreviation", "TeamName"]
     numeric = [
@@ -81,11 +81,12 @@ def build_model():
     )
 
     search = RandomizedSearchCV(
-        LogisticRegression(max_iter=1000),
+        RandomForestClassifier(random_state=42),
         param_distributions={
-            "C": [0.01, 0.1, 1, 10, 100],
-            "penalty": ["l2"],
-            "solver": ["lbfgs", "liblinear"],
+            "n_estimators": [50, 100, 200],
+            "max_depth": [5, 10, None],
+            "min_samples_split": [2, 5, 10],
+            "min_samples_leaf": [1, 2, 4],
         },
         n_iter=10,
         cv=5,
@@ -133,7 +134,7 @@ def train_and_predict():
             ("preprocess", pipe.named_steps["preprocess"]),
             (
                 "classifier",
-                LogisticRegression(max_iter=1000, **best_params),
+                RandomForestClassifier(random_state=42, **best_params),
             ),
         ]
     )
