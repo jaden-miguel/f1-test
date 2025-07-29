@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split, RandomizedSearchCV
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 
 CACHE_DIR = Path("cache")
 CACHE_DIR.mkdir(exist_ok=True)
@@ -63,7 +63,7 @@ def load_data(years=(2022, 2023, 2024)):
 
 
 def build_model():
-    """Return a randomized-search random forest pipeline."""
+    """Return a pipeline with a tuned logistic regression classifier."""
 
     categorical = ["Abbreviation", "TeamName"]
     numeric = [
@@ -80,30 +80,27 @@ def build_model():
         ]
     )
 
-    pipe = Pipeline(
-        [
-            ("preprocess", pre),
-            ("classifier", RandomForestClassifier(random_state=42)),
-        ]
-    )
-
-    param_dist = {
-        "classifier__n_estimators": [100, 200, 300, 500],
-        "classifier__max_depth": [None, 5, 10, 20],
-        "classifier__min_samples_split": [2, 5, 10],
-        "classifier__min_samples_leaf": [1, 2, 4],
-    }
-
     search = RandomizedSearchCV(
-        pipe,
-        param_distributions=param_dist,
+        LogisticRegression(max_iter=1000),
+        param_distributions={
+            "C": [0.01, 0.1, 1, 10, 100],
+            "penalty": ["l2"],
+            "solver": ["lbfgs", "liblinear"],
+        },
         n_iter=10,
         cv=5,
         n_jobs=-1,
         scoring="accuracy",
         random_state=42,
     )
-    return search
+
+    pipe = Pipeline(
+        [
+            ("preprocess", pre),
+            ("classifier", search),
+        ]
+    )
+    return pipe
 
 
 def train_and_predict():
@@ -125,11 +122,21 @@ def train_and_predict():
     X = df[features]
     y = df["Winner"]
 
-    search = build_model()
-    search.fit(X, y)
-    print("Best parameters:", search.best_params_)
+    pipe = build_model()
+    pipe.fit(X, y)
+    best_params = pipe.named_steps["classifier"].best_params_
+    print("Best parameters:", best_params)
 
-    model = search.best_estimator_
+    # rebuild model using the best parameters for final training
+    model = Pipeline(
+        [
+            ("preprocess", pipe.named_steps["preprocess"]),
+            (
+                "classifier",
+                LogisticRegression(max_iter=1000, **best_params),
+            ),
+        ]
+    )
 
     # predict winner for the next scheduled race
     schedule = fastf1.get_event_schedule(last_year, include_testing=False)
