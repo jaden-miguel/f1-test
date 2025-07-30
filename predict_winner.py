@@ -12,14 +12,7 @@ CACHE_DIR = Path("cache")
 CACHE_DIR.mkdir(exist_ok=True)
 fastf1.Cache.enable_cache(str(CACHE_DIR))
 
-
 def load_data(years=(2022, 2023, 2024)):
-    """Load race results for multiple seasons using FastF1 and compute
-    cumulative points so the model can learn from season progress.
-
-    If a cached CSV file exists it will be reused to avoid excessive
-    network access.
-    """
     csv_path = Path("data.csv")
     if csv_path.exists():
         return pd.read_csv(csv_path)
@@ -31,7 +24,7 @@ def load_data(years=(2022, 2023, 2024)):
             try:
                 session = fastf1.get_session(year, int(rnd), "R")
                 session.load(laps=False, telemetry=False)
-            except Exception as exc:  # pragma: no cover - network errors
+            except Exception as exc:
                 print(f"Could not load {year} round {rnd}: {exc}")
                 continue
 
@@ -51,27 +44,15 @@ def load_data(years=(2022, 2023, 2024)):
 
     df = pd.concat(records, ignore_index=True)
     df.sort_values(["Year", "Round"], inplace=True)
-    df["DriverPointsBefore"] = (
-        df.groupby("DriverNumber")["Points"].cumsum() - df["Points"]
-    )
-    df["TeamPointsBefore"] = (
-        df.groupby("TeamName")["Points"].cumsum() - df["Points"]
-    )
+    df["DriverPointsBefore"] = df.groupby("DriverNumber")["Points"].cumsum() - df["Points"]
+    df["TeamPointsBefore"] = df.groupby("TeamName")["Points"].cumsum() - df["Points"]
     df = df.dropna(subset=["GridPosition", "DriverNumber", "Position"])
     df.to_csv(csv_path, index=False)
     return df
 
-
 def build_model():
-    """Return a randomized-search random forest pipeline."""
-
     categorical = ["Abbreviation", "TeamName"]
-    numeric = [
-        "GridPosition",
-        "DriverNumber",
-        "DriverPointsBefore",
-        "TeamPointsBefore",
-    ]
+    numeric = ["GridPosition", "DriverNumber", "DriverPointsBefore", "TeamPointsBefore"]
 
     pre = ColumnTransformer(
         [
@@ -79,7 +60,6 @@ def build_model():
             ("num", StandardScaler(), numeric),
         ]
     )
-
 
     pipe = Pipeline(
         [
@@ -107,22 +87,12 @@ def build_model():
 
     return search
 
-
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-
-    return model
-
-
 def train_and_predict():
     df = load_data()
     df["Winner"] = (df["Position"] == 1).astype(int)
 
     last_year = df["Year"].max()
     last_round = df[df["Year"] == last_year]["Round"].max()
-
 
     train_df = df[~((df["Year"] == last_year) & (df["Round"] == last_round))]
     test_df = df[(df["Year"] == last_year) & (df["Round"] == last_round)]
@@ -136,21 +106,16 @@ def train_and_predict():
         "TeamPointsBefore",
     ]
 
-
     X_train = train_df[features]
     y_train = train_df["Winner"]
 
-    search = build_model()
-    search.fit(X_train, y_train)
-    print("Best parameters:", search.best_params_)
+    model = build_model()
+    model.fit(X_train, y_train)
+    print("Best parameters:", model.best_params_)
 
-    best_model = search.best_estimator_
-
+    best_model = model.best_estimator_
     X_test = test_df[features]
     probs = best_model.predict_proba(X_test)[:, 1]
-
-
-    probs = model.predict_proba(X_test)[:, 1]
 
     test_df = test_df.copy()
     test_df['WinProbability'] = probs
@@ -160,7 +125,7 @@ def train_and_predict():
     actual_winner = test_df[test_df['Winner'] == 1].iloc[0]
     print("Actual winner was", actual_winner['Abbreviation'])
 
-    # predict winner for the next scheduled race
+    # Predict next round
     schedule = fastf1.get_event_schedule(last_year, include_testing=False)
     max_round = schedule["RoundNumber"].max()
     if last_round < max_round:
@@ -168,9 +133,7 @@ def train_and_predict():
         next_round = last_round + 1
     else:
         next_year = last_year + 1
-        next_schedule = fastf1.get_event_schedule(
-            next_year, include_testing=False
-        )
+        next_schedule = fastf1.get_event_schedule(next_year, include_testing=False)
         next_round = int(next_schedule["RoundNumber"].min())
 
     lineup = (
@@ -180,9 +143,7 @@ def train_and_predict():
         [["DriverNumber", "Abbreviation", "TeamName"]]
     )
 
-    driver_totals = (
-        df.groupby("DriverNumber")["Points"].sum()
-    )
+    driver_totals = df.groupby("DriverNumber")["Points"].sum()
     team_totals = df.groupby("TeamName")["Points"].sum()
 
     lineup["DriverPointsBefore"] = lineup["DriverNumber"].map(driver_totals)
@@ -190,40 +151,19 @@ def train_and_predict():
     lineup["GridPosition"] = 0
 
     X_next = lineup[features]
-
     next_probs = best_model.predict_proba(X_next)[:, 1]
     lineup["WinProbability"] = next_probs
     pred_next = lineup.sort_values("WinProbability", ascending=False).iloc[0]
-    print(
-        "Predicted winner for next round",
-        next_round,
-        "is",
-        pred_next["Abbreviation"],
-        "with probability",
-        f"{pred_next['WinProbability']:.3f}",
-    )
+    print("Predicted winner for next round", next_round, "is",
+          pred_next["Abbreviation"], "with probability",
+          f"{pred_next['WinProbability']:.3f}")
 
-
-    # compute accuracy on full dataset via train/test split
+    # Final accuracy
     X = df[features]
     y = df["Winner"]
-    X_tr, X_te, y_tr, y_te = train_test_split(
-        X, y, test_size=0.2, stratify=y, random_state=42
-    )
-    best_model.fit(X_tr, y_tr)
+    X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
     acc = best_model.score(X_te, y_te)
-
-
-    y = df['Winner']
-    X_tr, X_te, y_tr, y_te = train_test_split(
-        X, y, test_size=0.2, stratify=y, random_state=42
-    )
-    model = build_model()
-    model.fit(X_tr, y_tr)
-
-
     print("Overall accuracy", f"{acc:.3f}")
-
 
 if __name__ == '__main__':
     train_and_predict()
