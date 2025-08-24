@@ -1,4 +1,4 @@
-# F1 Winner Predictor
+# ApexAI: F1 Winner Predictor
 
 This project downloads Formula 1 race results with the
 [FastF1](https://github.com/theOehrly/Fast-F1) library and trains a random
